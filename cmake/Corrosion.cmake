@@ -675,6 +675,11 @@ function(_add_cargo_build out_cargo_build_out_dir)
     if(COR_NO_DEFAULT_FEATURES)
         set(no_default_features_arg --no-default-features)
     endif()
+    if(COR_NO_USES_TERMINAL)
+        unset(cor_uses_terminal)
+    else()
+        set(cor_uses_terminal USES_TERMINAL)
+    endif()
 
     set(global_rustflags_target_property "$<TARGET_GENEX_EVAL:${target_name},$<TARGET_PROPERTY:${target_name},INTERFACE_CORROSION_RUSTFLAGS>>")
     set(local_rustflags_target_property  "$<TARGET_GENEX_EVAL:${target_name},$<TARGET_PROPERTY:${target_name},INTERFACE_CORROSION_LOCAL_RUSTFLAGS>>")
@@ -854,7 +859,7 @@ function(_add_cargo_build out_cargo_build_out_dir)
         # The build is conducted in the directory of the Manifest, so that configuration files such as
         # `.cargo/config.toml` or `toolchain.toml` are applied as expected.
         WORKING_DIRECTORY "${workspace_toml_dir}"
-        USES_TERMINAL
+        ${cor_uses_terminal}
         COMMAND_EXPAND_LISTS
         VERBATIM
     )
@@ -882,9 +887,9 @@ function(_add_cargo_build out_cargo_build_out_dir)
         cargo-clean_${target_name}
         COMMAND
             "${cargo_bin}" clean ${cargo_target_option}
-            -p ${package_name} --manifest-path ${path_to_toml}
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/${build_dir}
-        USES_TERMINAL
+            -p ${package_name} --manifest-path "${path_to_toml}"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/${build_dir}"
+        ${cor_uses_terminal}
     )
 
     if (NOT TARGET cargo-clean)
@@ -902,6 +907,7 @@ corrosion_import_crate(
         [NO_DEFAULT_FEATURES]
         [NO_STD]
         [NO_LINKER_OVERRIDE]
+        [NO_USES_TERMINAL]
         [LOCKED]
         [FROZEN]
         [PROFILE <cargo-profile>]
@@ -917,6 +923,7 @@ corrosion_import_crate(
 * **NO_DEFAULT_FEATURES**: Equivalent to [--no-default-features] passed to cargo build
 * **NO_STD**:  Disable linking of standard libraries (required for no_std crates).
 * **NO_LINKER_OVERRIDE**: Will let Rust/Cargo determine which linker to use instead of corrosion (when linking is invoked by Rust)
+* **NO_USES_TERMINAL**: Don't pass the `USES_TERMINAL` flag when creating the custom CMake targets.
 * **LOCKED**: Pass [`--locked`] to cargo build and cargo metadata.
 * **FROZEN**: Pass [`--frozen`] to cargo build and cargo metadata.
 * **PROFILE**: Specify cargo build profile (`dev`/`release` or a [custom profile]; `bench` and `test` are not supported)
@@ -937,7 +944,14 @@ corrosion_import_crate(
 ANCHOR_END: corrosion-import-crate
 #]=======================================================================]
 function(corrosion_import_crate)
-    set(OPTIONS ALL_FEATURES NO_DEFAULT_FEATURES NO_STD NO_LINKER_OVERRIDE LOCKED FROZEN)
+    set(OPTIONS
+        ALL_FEATURES
+        NO_DEFAULT_FEATURES
+        NO_STD
+        NO_LINKER_OVERRIDE
+        NO_USES_TERMINAL
+        LOCKED
+        FROZEN)
     set(ONE_VALUE_KEYWORDS MANIFEST_PATH PROFILE IMPORTED_CRATES)
     set(MULTI_VALUE_KEYWORDS CRATE_TYPES CRATES FEATURES FLAGS)
     cmake_parse_arguments(COR "${OPTIONS}" "${ONE_VALUE_KEYWORDS}" "${MULTI_VALUE_KEYWORDS}" ${ARGN})
