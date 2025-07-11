@@ -1229,7 +1229,7 @@ function(corrosion_install)
 
     # Arguments to each install target type
     set(OPTIONS)
-    set(ONE_VALUE_ARGS DESTINATION)
+    set(ONE_VALUE_ARGS DESTINATION COMPONENT)
     set(MULTI_VALUE_ARGS PERMISSIONS CONFIGURATIONS)
     set(TARGET_ARGS ${OPTIONS} ${ONE_VALUE_ARGS} ${MULTI_VALUE_ARGS})
 
@@ -1237,6 +1237,7 @@ function(corrosion_install)
         # corrosion_install(TARGETS ... [EXPORT <export-name>]
         #                   [[ARCHIVE|LIBRARY|RUNTIME|PRIVATE_HEADER|PUBLIC_HEADER]
         #                    [DESTINATION <dir>]
+        #                    [COMPONENT <component-name>]
         #                    [PERMISSIONS permissions...]
         #                    [CONFIGURATIONS [Debug|Release|...]]
         #                   ] [...])
@@ -1309,6 +1310,10 @@ function(corrosion_install)
                 set(COR_INSTALL_${INSTALL_TARGET_TYPE}_DESTINATION ${COR_DESTINATION})
             endif()
 
+            if (COR_COMPONENT)
+                set(COR_INSTALL_${INSTALL_TARGET_TYPE}_COMPONENT ${COR_COMPONENT})
+            endif()
+
             if (COR_PERMISSIONS)
                 set(COR_INSTALL_${INSTALL_TARGET_TYPE}_PERMISSIONS ${COR_PERMISSIONS})
             endif()
@@ -1353,6 +1358,14 @@ function(corrosion_install)
                         ${DEFAULT_PERMISSIONS} OWNER_EXECUTE GROUP_EXECUTE WORLD_EXECUTE)
                 endif()
 
+                if (DEFINED COR_INSTALL_RUNTIME_COMPONENT)
+                    set(COMPONENT COMPONENT ${COR_INSTALL_RUNTIME_COMPONENT})
+                elseif (DEFINED COR_INSTALL_DEFAULT_COMPONENT)
+                    set(COMPONENT COMPONENT ${COR_INSTALL_DEFAULT_COMPONENT})
+                else()
+                    set(COMPONENT)
+                endif()
+
                 if (DEFINED COR_INSTALL_RUNTIME_CONFIGURATIONS)
                     set(CONFIGURATIONS CONFIGURATIONS ${COR_INSTALL_RUNTIME_CONFIGURATIONS})
                 elseif (DEFINED COR_INSTALL_DEFAULT_CONFIGURATIONS)
@@ -1366,6 +1379,7 @@ function(corrosion_install)
                     DESTINATION ${DESTINATION}
                     PERMISSIONS ${PERMISSIONS}
                     ${CONFIGURATIONS}
+                    ${COMPONENT}
                 )
             endif()
         endforeach()
