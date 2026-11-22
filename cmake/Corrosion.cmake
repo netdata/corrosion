@@ -675,6 +675,11 @@ function(_add_cargo_build out_cargo_build_out_dir)
     if(COR_NO_DEFAULT_FEATURES)
         set(no_default_features_arg --no-default-features)
     endif()
+    if(COR_NO_USES_TERMINAL)
+        unset(cor_uses_terminal)
+    else()
+        set(cor_uses_terminal USES_TERMINAL)
+    endif()
 
     set(global_rustflags_target_property "$<TARGET_GENEX_EVAL:${target_name},$<TARGET_PROPERTY:${target_name},INTERFACE_CORROSION_RUSTFLAGS>>")
     set(local_rustflags_target_property  "$<TARGET_GENEX_EVAL:${target_name},$<TARGET_PROPERTY:${target_name},INTERFACE_CORROSION_LOCAL_RUSTFLAGS>>")
@@ -748,7 +753,13 @@ function(_add_cargo_build out_cargo_build_out_dir)
     set(default_build_type_dir "$<IF:$<OR:$<CONFIG:Debug>,$<CONFIG:>>,debug,release>")
     set(build_type_dir "$<IF:${cargo_profile_set},${custom_profile_build_type_dir},${default_build_type_dir}>")
 
-    set(cargo_target_dir "${CMAKE_BINARY_DIR}/${build_dir}/cargo/build")
+    if(COR_ISOLATE_CARGO_TARGET_DIRS)
+        # One cargo target directory per target: cargo locks its target directory for the whole build, so targets
+        # sharing one directory always build one after the other, whatever the CMake generator allows.
+        set(cargo_target_dir "${CMAKE_BINARY_DIR}/${build_dir}/cargo/build-${target_name}")
+    else()
+        set(cargo_target_dir "${CMAKE_BINARY_DIR}/${build_dir}/cargo/build")
+    endif()
     set(cargo_build_dir "${cargo_target_dir}/${target_artifact_dir}/${build_type_dir}")
     set("${out_cargo_build_out_dir}" "${cargo_build_dir}" PARENT_SCOPE)
 
@@ -854,7 +865,7 @@ function(_add_cargo_build out_cargo_build_out_dir)
         # The build is conducted in the directory of the Manifest, so that configuration files such as
         # `.cargo/config.toml` or `toolchain.toml` are applied as expected.
         WORKING_DIRECTORY "${workspace_toml_dir}"
-        USES_TERMINAL
+        ${cor_uses_terminal}
         COMMAND_EXPAND_LISTS
         VERBATIM
     )
@@ -881,10 +892,17 @@ function(_add_cargo_build out_cargo_build_out_dir)
     add_custom_target(
         cargo-clean_${target_name}
         COMMAND
+            ${CMAKE_COMMAND} -E env "CARGO_BUILD_RUSTC=${rustc_bin}"
             "${cargo_bin}" clean ${cargo_target_option}
-            -p ${package_name} --manifest-path ${path_to_toml}
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/${build_dir}
-        USES_TERMINAL
+            -p ${package_name} --manifest-path "${path_to_toml}"
+            --target-dir "${cargo_target_dir}"
+            ${cargo_profile}
+        # Clean what the build above produces: same rustc, target directory and profile, run from the same
+        # directory so that the same `.cargo/config.toml` applies.
+        WORKING_DIRECTORY "${workspace_toml_dir}"
+        ${cor_uses_terminal}
+        COMMAND_EXPAND_LISTS
+        VERBATIM
     )
 
     if (NOT TARGET cargo-clean)
@@ -902,6 +920,8 @@ corrosion_import_crate(
         [NO_DEFAULT_FEATURES]
         [NO_STD]
         [NO_LINKER_OVERRIDE]
+        [NO_USES_TERMINAL]
+        [ISOLATE_CARGO_TARGET_DIRS]
         [LOCKED]
         [FROZEN]
         [PROFILE <cargo-profile>]
@@ -917,6 +937,12 @@ corrosion_import_crate(
 * **NO_DEFAULT_FEATURES**: Equivalent to [--no-default-features] passed to cargo build
 * **NO_STD**:  Disable linking of standard libraries (required for no_std crates).
 * **NO_LINKER_OVERRIDE**: Will let Rust/Cargo determine which linker to use instead of corrosion (when linking is invoked by Rust)
+* **NO_USES_TERMINAL**: Don't pass the `USES_TERMINAL` flag when creating the custom CMake targets.
+* **ISOLATE_CARGO_TARGET_DIRS**: Give every imported target its own cargo target directory
+  (`cargo/build-<target>` instead of the shared `cargo/build`). Cargo locks its target directory for the whole build,
+  so together with `NO_USES_TERMINAL` this lets the targets build in parallel. Dependencies are compiled once per
+  target, which costs CPU time, disk space and peak memory. An explicit cargo `build.build-dir` setting still shares
+  intermediate state between the targets.
 * **LOCKED**: Pass [`--locked`] to cargo build and cargo metadata.
 * **FROZEN**: Pass [`--frozen`] to cargo build and cargo metadata.
 * **PROFILE**: Specify cargo build profile (`dev`/`release` or a [custom profile]; `bench` and `test` are not supported)
@@ -937,7 +963,15 @@ corrosion_import_crate(
 ANCHOR_END: corrosion-import-crate
 #]=======================================================================]
 function(corrosion_import_crate)
-    set(OPTIONS ALL_FEATURES NO_DEFAULT_FEATURES NO_STD NO_LINKER_OVERRIDE LOCKED FROZEN)
+    set(OPTIONS
+        ALL_FEATURES
+        NO_DEFAULT_FEATURES
+        NO_STD
+        NO_LINKER_OVERRIDE
+        NO_USES_TERMINAL
+        ISOLATE_CARGO_TARGET_DIRS
+        LOCKED
+        FROZEN)
     set(ONE_VALUE_KEYWORDS MANIFEST_PATH PROFILE IMPORTED_CRATES)
     set(MULTI_VALUE_KEYWORDS CRATE_TYPES CRATES FEATURES FLAGS)
     cmake_parse_arguments(COR "${OPTIONS}" "${ONE_VALUE_KEYWORDS}" "${MULTI_VALUE_KEYWORDS}" ${ARGN})
