@@ -892,10 +892,17 @@ function(_add_cargo_build out_cargo_build_out_dir)
     add_custom_target(
         cargo-clean_${target_name}
         COMMAND
+            ${CMAKE_COMMAND} -E env "CARGO_BUILD_RUSTC=${rustc_bin}"
             "${cargo_bin}" clean ${cargo_target_option}
             -p ${package_name} --manifest-path "${path_to_toml}"
-        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/${build_dir}"
+            --target-dir "${cargo_target_dir}"
+            ${cargo_profile}
+        # Clean what the build above produces: same rustc, target directory and profile, run from the same
+        # directory so that the same `.cargo/config.toml` applies.
+        WORKING_DIRECTORY "${workspace_toml_dir}"
         ${cor_uses_terminal}
+        COMMAND_EXPAND_LISTS
+        VERBATIM
     )
 
     if (NOT TARGET cargo-clean)
