@@ -753,7 +753,13 @@ function(_add_cargo_build out_cargo_build_out_dir)
     set(default_build_type_dir "$<IF:$<OR:$<CONFIG:Debug>,$<CONFIG:>>,debug,release>")
     set(build_type_dir "$<IF:${cargo_profile_set},${custom_profile_build_type_dir},${default_build_type_dir}>")
 
-    set(cargo_target_dir "${CMAKE_BINARY_DIR}/${build_dir}/cargo/build")
+    if(COR_ISOLATE_CARGO_TARGET_DIRS)
+        # One cargo target directory per target: cargo locks its target directory for the whole build, so targets
+        # sharing one directory always build one after the other, whatever the CMake generator allows.
+        set(cargo_target_dir "${CMAKE_BINARY_DIR}/${build_dir}/cargo/build-${target_name}")
+    else()
+        set(cargo_target_dir "${CMAKE_BINARY_DIR}/${build_dir}/cargo/build")
+    endif()
     set(cargo_build_dir "${cargo_target_dir}/${target_artifact_dir}/${build_type_dir}")
     set("${out_cargo_build_out_dir}" "${cargo_build_dir}" PARENT_SCOPE)
 
@@ -908,6 +914,7 @@ corrosion_import_crate(
         [NO_STD]
         [NO_LINKER_OVERRIDE]
         [NO_USES_TERMINAL]
+        [ISOLATE_CARGO_TARGET_DIRS]
         [LOCKED]
         [FROZEN]
         [PROFILE <cargo-profile>]
@@ -924,6 +931,11 @@ corrosion_import_crate(
 * **NO_STD**:  Disable linking of standard libraries (required for no_std crates).
 * **NO_LINKER_OVERRIDE**: Will let Rust/Cargo determine which linker to use instead of corrosion (when linking is invoked by Rust)
 * **NO_USES_TERMINAL**: Don't pass the `USES_TERMINAL` flag when creating the custom CMake targets.
+* **ISOLATE_CARGO_TARGET_DIRS**: Give every imported target its own cargo target directory
+  (`cargo/build-<target>` instead of the shared `cargo/build`). Cargo locks its target directory for the whole build,
+  so together with `NO_USES_TERMINAL` this lets the targets build in parallel. Dependencies are compiled once per
+  target, which costs CPU time, disk space and peak memory. An explicit cargo `build.build-dir` setting still shares
+  intermediate state between the targets.
 * **LOCKED**: Pass [`--locked`] to cargo build and cargo metadata.
 * **FROZEN**: Pass [`--frozen`] to cargo build and cargo metadata.
 * **PROFILE**: Specify cargo build profile (`dev`/`release` or a [custom profile]; `bench` and `test` are not supported)
@@ -950,6 +962,7 @@ function(corrosion_import_crate)
         NO_STD
         NO_LINKER_OVERRIDE
         NO_USES_TERMINAL
+        ISOLATE_CARGO_TARGET_DIRS
         LOCKED
         FROZEN)
     set(ONE_VALUE_KEYWORDS MANIFEST_PATH PROFILE IMPORTED_CRATES)
